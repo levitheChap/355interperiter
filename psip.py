@@ -8,6 +8,9 @@ import logging
 
 logging.basicConfig(level = logging.DEBUG)
 
+
+STATIC_SCOPEING = False ##global variable to control scoping##
+
 ##---------PSDICT----------##
 ##using self made dictionary so it is easy to manage ##
 ## when switching from dynamic to static scopes##
@@ -16,6 +19,7 @@ class PSDict:
     """" PostScript dictionary"""
     def __init__(self):
         self.dict = {}
+        self.parent = None ##for static scoping##
 
     def __setitem__(self, key, value):
         self.dict[key] = value
@@ -25,6 +29,9 @@ class PSDict:
     
     def __contains__(self, key):
         return key in self.dict
+
+    def set_parent(self, parent):
+        self.parent = parent
 
     def __repr(self):
         return f"PSDICT({self.dict})"
@@ -175,13 +182,48 @@ def def_operations():
             ##print("\ndef operation raise exception\n")
             raise TypeMismatch("def_operations- not enough operands for operation 'mul'")
 
+
+def dict_operations():
+    new_dict = PSDict()##create new dictionary## ##also when scope is set##
+    if STATIC_SCOPEING:
+        current_dict = dict_stack[-1]
+        new_dict.set_parent(current_dict)
+    op_stack.append(new_dict)
+
+
+def begin_operations():
+    if len(op_stack) >= 1:
+        dict_obj = op_stack.pop()
+        if isinstance(dict_obj, PSDict):
+            dict_stack.append(dict_obj)
+        else:
+            raise TypeMismatch("begin_operations- top of opperand stack is not a dictionary")
+    else:
+        raise TypeMismatch("begin_operations- stack is empty")
+    
+def end_operations():
+    if len(dict_stack) > 1:##prevent popping built in dictionary##
+        dict_stack.pop()
+    else:
+        raise TypeMismatch("end_operations- can't pop the built-in dictionary")
+
 ##--------------REGISTER IN BUILT OPERATIONS-------------##
 ##this checks the last element in the dict stack and does the operations associated with it##
 
+##creat more operations and register them here##
+
 dict_stack[-1]["add"] = add_operations
 dict_stack[-1]["mul"] = mul_operations
-dict_stack[-1]["="] = pop_print_operations
+dict_stack[-1]["="] = pop_print_operations ##= print operation##
 dict_stack[-1]["def"] = def_operations
+dict_stack[-1]["dict"] = dict_operations
+dict_stack[-1]["begin"] = begin_operations
+dict_stack[-1]["end"] = end_operations
+
+
+
+##--------------LOOKUP IN DICTIONARY-------------##
+##this function looks up the input in the dictionary stack##
 
 def lookup_in_dictionary(input):
     ##print("\nlookup_in_dictionary called &&&&&&&&&&&\n")
@@ -189,14 +231,28 @@ def lookup_in_dictionary(input):
         logging.debug(current_dict)
         if input in current_dict:##looks through each dictionary for specidic key(input)##
             value = current_dict[input]##if found then get the value##
-            if callable(value):
-                value()##if it is a function ---> call it##
-            else:
-                op_stack.append(value)##else push it to the op stack##
+            if callable(value):##if it is a function ---> call it##
+                value()
+            
+            elif isinstance(value, list): ##if it is a code block push it to the op stack##
+                for item in value:
+                    process_input(item)
+                
+            else:##if it is a single thing push it to the op stack##
+                op_stack.append(value)
             return
     raise ParseFailed(f"(LiD)could not find {input} in the dictionary")
         
+def lookup_in_static_dictionary(input, current_dict):
+    pass
+## instead of itterating through dict_stack one dictionary at a time##
+## you need to use the parent chain i.e. if a dictionary dons not ##
+## have the key you are looking for you have to look in the parrent ##
+## and continue until you find it or reach the built in dictionary ##
 
+
+#--------------PROCESS INPUT-------------##
+##this function process a single input##
 def process_input(user_input):
     try:
         res = process_constants(user_input) ##try to parse input as constant(number,boolean)##
@@ -204,21 +260,28 @@ def process_input(user_input):
     except ParseFailed as e:##since it failed to parse as constant try to look it up in dictionary##
         logging.debug(e)
         try:
-            lookup_in_dictionary(user_input)
+            if STATIC_SCOPEING:
+                lookup_in_static_dictionary(user_input, dict_stack[-1])
+            else:
+                lookup_in_dictionary(user_input)
         except Exception as e:
             logging.error(f"(PD)could not find {user_input} in any dictionary: {e}")
 
-
+##the way the REPL works is that if the input starts with { it is treated as a code block
+##otherwise it is split into tokens and each token is processed individually##
 
 #REPL
 def repl():
     while True:
         user_input = input("REPL> ")
-        tokens = user_input.split()
-        for token in tokens:
-            if token.lower() == 'quit':
-                return
-            process_input(token)
+        if user_input.strip().startswith('{'):##this is for code blocks##
+            process_input(user_input)##it is alright to process code blocks one at a time##
+        else:
+            tokens = user_input.split()
+            for token in tokens:
+                if token.lower() == 'quit':
+                    return
+                process_input(token)
         logging.debug(f"Operation Stack: {op_stack}")
 
 if __name__ == "__main__":

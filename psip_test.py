@@ -1,4 +1,4 @@
-from psip import ParseFailed, process_boolean, process_code_block
+from psip import ParseFailed, process_boolean, process_code_block, process_input, op_stack, add_operations
 import pytest
 
 class TestBooleanParsing:
@@ -35,5 +35,21 @@ class TestCodeBlockParsing:
         with pytest.raises(ParseFailed):
             process_code_block("1 add")
 
+class TestAddOpperation:
+    """" Test for add operation"""
+
+    def test_add_operation(self):
+        process_input("5")
+        process_input("3")
+        process_input("add")
+        result = op_stack.pop()
+        assert result == 8
+
+    def test_add_operation_invalid(self):
+        process_input("5")
+        process_input("add")
+        with pytest.raises(Exception):
+            op_stack.pop()
 ##ADD MORE TESTS FOR OTHER PARSERS LIKE NUMBERS AND NAME CONSTANTS##
 ##ADD SO MANY TESTS SO YOU GET MOST CREDITS POSSIBLE##
+##MAKE SURE TO TEST EDGE CASES AND INVALID INPUTS##
